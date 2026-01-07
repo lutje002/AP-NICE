@@ -261,6 +261,17 @@
       width: 0%;
       transition: width 0.3s;
     }
+    
+    .api-mode-toggle {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .api-mode-toggle label {
+      margin-left: 10px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -285,6 +296,12 @@
           <button id="verifyAllButton" class="external-button">Verifieer Alle APs</button>
           <button class="external-button" onclick="window.open('https://eu.hamina.com/share/8c3486a8-3d7d-43eb-86d7-ffbcee13c4ad', '_blank')">Hamina</button>
         </div>
+      </div>
+      
+      <!-- API Mode Toggle -->
+      <div class="api-mode-toggle">
+        <input type="checkbox" id="apiModeToggle" checked>
+        <label for="apiModeToggle">Gebruik simulatiemodus (aanbevolen voor testen)</label>
       </div>
       
       <!-- Sync Progress Bar -->
@@ -362,7 +379,7 @@
     
     // MIST API configuratie
     const mistApiConfig = {
-      baseUrl: "https://api.eu.mist.com/api/v1",
+      baseUrl: "https://api.mist.com/api/v1",
       apiToken: "1LVotjirsmjJqpwKIgd6kW7pSkBQDzE8stocCp0F0SJkXqnEBXsOq8vaMEoGJu4C4PVhxARCacqARYUq9r2xB8D6fIdAsEgD",
       orgId: "c4a4ccaa-c9b9-4f92-bc79-233b35b3e499",
       siteId: "1e9397e0-c48b-4144-bd29-7261408ffbea"
@@ -411,7 +428,7 @@
 
     // AP data
     const apData = [
-       ["AP-RUURLO-1", "Ruurlo", "AP-00-001", "NLSKB-AP-PP", "-"],
+     ["AP-RUURLO-1", "Ruurlo", "AP-00-001", "NLSKB-AP-PP", "-"],
   ["RAP01", "onbekend", "AP-00-001", "NLSKB-AP-GROUP", "-"],
   ["AP-PRK-1", "Winterswijk", "AP-00-429", "NLSKB-AP-PP", "-"],
   ["AP-PRK-2", "Winterswijk", "AP-00-430", "NLSKB-AP-PP", "-"],
@@ -911,7 +928,7 @@
       document.getElementById('resultsInfo').textContent = `Toont ${data.length} access points`;
     }
     
-    // Functie om een enkele AP te verifiëren via de MIST API
+    // Functie om een enkele AP te verifiëren
     function verifyAP(index) {
       const apName = apData[index][0];
       const apLabel = apData[index][2];
@@ -920,22 +937,55 @@
       // Status op "laden" zetten
       statusCell.innerHTML = "<span class='status-loading'>Verifiëren...</span>";
       
-      // API aanroep om AP te verifiëren
-      checkAPInMist(apLabel)
-        .then(result => {
-          if (result.exists) {
-            statusCell.innerHTML = "<span class='status-ok'>✓ Geverifieerd</span>";
-            apData[index][5] = "<span class='status-ok'>✓ Geverifieerd</span>";
-          } else {
-            statusCell.innerHTML = "<span class='status-error'>✗ AP niet gevonden</span>";
-            apData[index][5] = "<span class='status-error'>✗ AP niet gevonden</span>";
-          }
-        })
-        .catch(error => {
-          statusCell.innerHTML = "<span class='status-error'>✗ API fout</span>";
-          apData[index][5] = "<span class='status-error'>✗ API fout</span>";
-          console.error("API Error:", error);
-        });
+      // Controleer of we in simulatiemodus zijn
+      if (document.getElementById('apiModeToggle').checked) {
+        // Simulatiemodus
+        simulateVerifyAP(apLabel)
+          .then(result => {
+            updateAPStatus(index, statusCell, result.exists);
+          })
+          .catch(error => {
+            handleAPIError(index, statusCell, error);
+          });
+      } else {
+        // Echte API modus
+        checkAPInMist(apLabel)
+          .then(result => {
+            updateAPStatus(index, statusCell, result.exists);
+          })
+          .catch(error => {
+            handleAPIError(index, statusCell, error);
+          });
+      }
+    }
+    
+    // Update AP status in UI
+    function updateAPStatus(index, statusCell, exists) {
+      if (exists) {
+        statusCell.innerHTML = "<span class='status-ok'>✓ Geverifieerd</span>";
+        apData[index][5] = "<span class='status-ok'>✓ Geverifieerd</span>";
+      } else {
+        statusCell.innerHTML = "<span class='status-error'>✗ AP niet gevonden</span>";
+        apData[index][5] = "<span class='status-error'>✗ AP niet gevonden</span>";
+      }
+    }
+    
+    // Afhandelen van API fouten
+    function handleAPIError(index, statusCell, error) {
+      console.error("API Error:", error);
+      statusCell.innerHTML = `<span class='status-error'>✗ Fout: ${error.message}</span>`;
+      apData[index][5] = `<span class='status-error'>✗ Fout: ${error.message}</span>`;
+    }
+    
+    // Simuleer verificatie (voor testen)
+    function simulateVerifyAP(apLabel) {
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          // Voor testdoeleinden, alleen AP-00-001 bestaat
+          const exists = apLabel === "AP-00-001";
+          resolve({ exists: exists });
+        }, 500);
+      });
     }
     
     // Functie om alle APs te verifiëren
@@ -952,8 +1002,8 @@
       try {
         console.log(`Controleren of AP met Label-AP ${apLabel} bestaat in MIST`);
         
-        // Maak de API URL met de proxy om CORS-problemen te omzeilen
-        const apiUrl = `${mistApiConfig.baseUrl}/sites/${mistApiConfig.siteId}/devices`;
+        // Maak de API URL met de specifieke query parameter voor AP's
+        const apiUrl = `${mistApiConfig.baseUrl}/sites/${mistApiConfig.siteId}/devices?type=ap`;
         const fullUrl = `${proxyUrl}${encodeURIComponent(apiUrl)}`;
         
         // API-aanroep naar MIST
@@ -971,11 +1021,8 @@
         
         const data = await response.json();
         
-        // Filter alleen op access points
-        const aps = data.filter(device => device.type === 'ap');
-        
         // Zoek AP met het opgegeven label (name in MIST)
-        const matchingAP = aps.find(ap => ap.name === apLabel);
+        const matchingAP = data.find(ap => ap.name === apLabel);
         
         return { exists: !!matchingAP };
       } catch (error) {
@@ -995,58 +1042,11 @@
       syncStatus.textContent = '0%';
       
       try {
-        // Maak de API URL met de proxy om CORS-problemen te omzeilen
-        const apiUrl = `${mistApiConfig.baseUrl}/sites/${mistApiConfig.siteId}/devices`;
-        const fullUrl = `${proxyUrl}${encodeURIComponent(apiUrl)}`;
-        
-        // Update progress
-        progressBar.style.width = '30%';
-        syncStatus.textContent = '30% - API aanroepen...';
-        
-        // API-aanroep naar MIST om alle devices op te halen
-        const response = await fetch(fullUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Token ${mistApiConfig.apiToken}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // Update progress
-        progressBar.style.width = '60%';
-        syncStatus.textContent = '60% - Data verwerken...';
-        
-        // Filter alleen op access points
-        const aps = data.filter(device => device.type === 'ap');
-        
-        // Maak een set van alle AP namen in MIST
-        const mistAPNames = new Set(aps.map(ap => ap.name));
-        
-        // Update progress
-        progressBar.style.width = '80%';
-        syncStatus.textContent = '80% - AP status bijwerken...';
-        
-        // Update de status van alle AP's in de tabel
-        for (let i = 0; i < apData.length; i++) {
-          const apLabel = apData[i][2];
-          const exists = mistAPNames.has(apLabel);
-          
-          const statusCell = document.getElementById(`status-${i}`);
-          if (statusCell) {
-            if (exists) {
-              statusCell.innerHTML = "<span class='status-ok'>✓ Geverifieerd</span>";
-              apData[i][5] = "<span class='status-ok'>✓ Geverifieerd</span>";
-            } else {
-              statusCell.innerHTML = "<span class='status-error'>✗ AP niet gevonden</span>";
-              apData[i][5] = "<span class='status-error'>✗ AP niet gevonden</span>";
-            }
-          }
+        // Controleer of we in simulatiemodus zijn
+        if (document.getElementById('apiModeToggle').checked) {
+          await simulateSyncWithMist(progressBar, syncStatus);
+        } else {
+          await realSyncWithMist(progressBar, syncStatus);
         }
         
         // Voltooiingsbericht
@@ -1064,6 +1064,85 @@
         setTimeout(() => {
           syncProgress.style.display = 'none';
         }, 5000);
+      }
+    }
+    
+    // Simuleer synchronisatie met MIST
+    async function simulateSyncWithMist(progressBar, syncStatus) {
+      progressBar.style.width = '30%';
+      syncStatus.textContent = '30% - Data simuleren...';
+      
+      // Wacht even om de simulatie realistischer te maken
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      progressBar.style.width = '60%';
+      syncStatus.textContent = '60% - AP-gegevens verwerken...';
+      
+      // Wacht nog even
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      progressBar.style.width = '80%';
+      syncStatus.textContent = '80% - AP-verificatie uitvoeren...';
+      
+      // Simuleer dat alleen AP-00-001 bestaat in MIST
+      for (let i = 0; i < apData.length; i++) {
+        const apLabel = apData[i][2];
+        const exists = apLabel === "AP-00-001";
+        
+        const statusCell = document.getElementById(`status-${i}`);
+        if (statusCell) {
+          updateAPStatus(i, statusCell, exists);
+        }
+      }
+    }
+    
+    // Echte synchronisatie met MIST API
+    async function realSyncWithMist(progressBar, syncStatus) {
+      try {
+        // Maak de API URL met de specifieke query parameter voor AP's
+        const apiUrl = `${mistApiConfig.baseUrl}/sites/${mistApiConfig.siteId}/devices?type=ap`;
+        const fullUrl = `${proxyUrl}${encodeURIComponent(apiUrl)}`;
+        
+        progressBar.style.width = '30%';
+        syncStatus.textContent = '30% - API aanroepen...';
+        
+        // API-aanroep naar MIST
+        const response = await fetch(fullUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Token ${mistApiConfig.apiToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        progressBar.style.width = '60%';
+        syncStatus.textContent = '60% - Data verwerken...';
+        
+        // Maak een set van alle AP namen in MIST
+        const mistAPNames = new Set(data.map(ap => ap.name));
+        
+        progressBar.style.width = '80%';
+        syncStatus.textContent = '80% - AP status bijwerken...';
+        
+        // Update de status van alle AP's in de tabel
+        for (let i = 0; i < apData.length; i++) {
+          const apLabel = apData[i][2];
+          const exists = mistAPNames.has(apLabel);
+          
+          const statusCell = document.getElementById(`status-${i}`);
+          if (statusCell) {
+            updateAPStatus(i, statusCell, exists);
+          }
+        }
+      } catch (error) {
+        console.error("Error during real synchronization:", error);
+        throw error;
       }
     }
     
@@ -1147,6 +1226,10 @@
   </script>
 </body>
 </html>
+
+       
+    
+  
 
 
           
