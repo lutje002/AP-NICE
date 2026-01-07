@@ -1,4 +1,3 @@
-MIST API Test
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -27,15 +26,21 @@ MIST API Test
       margin-top: 0;
     }
     
+    .button-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
     button {
       background-color: #007bff;
       color: white;
       border: none;
       border-radius: 4px;
       padding: 10px 15px;
-      font-size: 16px;
+      font-size: 14px;
       cursor: pointer;
-      margin-bottom: 20px;
     }
     
     button:hover {
@@ -64,14 +69,51 @@ MIST API Test
       font-style: italic;
       color: #666;
     }
+    
+    .api-config {
+      background-color: #f0f0f0;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    
+    .api-config div {
+      margin-bottom: 5px;
+    }
+    
+    .api-config span {
+      color: #0066cc;
+    }
+    
+    .simulate-button {
+      background-color: #28a745;
+    }
+    
+    .simulate-button:hover {
+      background-color: #218838;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>MIST API Test</h1>
     
-    <button id="testApiButton">Test MIST API</button>
-    <button id="testProxyButton">Test met CORS Proxy</button>
+    <div class="api-config">
+      <div>baseUrl: <span id="baseUrl"></span></div>
+      <div>orgId: <span id="orgId"></span></div>
+      <div>siteId: <span id="siteId"></span></div>
+      <div>API Token: <span id="apiToken"></span></div>
+    </div>
+    
+    <div class="button-group">
+      <button id="testDirectButton">Test Direct (CORS fout verwacht)</button>
+      <button id="testCorsProxyIoButton">Test met corsproxy.io</button>
+      <button id="testCorsAnywhereButton">Test met cors-anywhere</button>
+      <button id="testAllOriginsButton">Test met allorigins.win</button>
+      <button id="simulateButton" class="simulate-button">Simuleer API Respons</button>
+    </div>
     
     <div class="status" id="status">Status: Gereed</div>
     
@@ -81,36 +123,67 @@ MIST API Test
   <script>
     // MIST API configuratie
     const mistApiConfig = {
-      baseUrl: "https://api.eu.mist.com/api/v1",
+      baseUrl: "https://api.mist.com/api/v1",
       apiToken: "1LVotjirsmjJqpwKIgd6kW7pSkBQDzE8stocCp0F0SJkXqnEBXsOq8vaMEoGJu4C4PVhxARCacqARYUq9r2xB8D6fIdAsEgD",
       orgId: "c4a4ccaa-c9b9-4f92-bc79-233b35b3e499",
       siteId: "1e9397e0-c48b-4144-bd29-7261408ffbea"
     };
     
-    // Proxy URL voor CORS-omzeiling
-    const proxyUrl = "https://corsproxy.io/?";
+    // Toon API configuratie (laatste 4 tekens van token)
+    document.getElementById('baseUrl').textContent = mistApiConfig.baseUrl;
+    document.getElementById('orgId').textContent = mistApiConfig.orgId;
+    document.getElementById('siteId').textContent = mistApiConfig.siteId;
+    document.getElementById('apiToken').textContent = 
+      mistApiConfig.apiToken.substring(0, 4) + '...' + 
+      mistApiConfig.apiToken.substring(mistApiConfig.apiToken.length - 4);
+    
+    // Proxy URLs voor CORS-omzeiling
+    const proxies = {
+      corsProxyIo: "https://corsproxy.io/?",
+      corsAnywhere: "https://cors-anywhere.herokuapp.com/",
+      allOrigins: "https://api.allorigins.win/raw?url="
+    };
     
     // DOM elementen
     const statusElement = document.getElementById('status');
     const resultElement = document.getElementById('result');
-    const testApiButton = document.getElementById('testApiButton');
-    const testProxyButton = document.getElementById('testProxyButton');
+    
+    // Timeout voor API aanroepen (10 seconden)
+    const API_TIMEOUT = 10000;
+    
+    // Functie om API aan te roepen met timeout
+    async function fetchWithTimeout(url, options, timeoutMs) {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
+      
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+      } catch (error) {
+        clearTimeout(id);
+        throw error;
+      }
+    }
     
     // Test de API direct (zal waarschijnlijk CORS-fouten geven)
-    testApiButton.addEventListener('click', async () => {
-      statusElement.textContent = 'Status: API aanroepen...';
-      resultElement.textContent = 'Bezig met API aanroep...';
+    document.getElementById('testDirectButton').addEventListener('click', async () => {
+      statusElement.textContent = 'Status: Directe API aanroep...';
+      resultElement.textContent = 'Bezig met directe API aanroep...';
       
       try {
         const apiUrl = `${mistApiConfig.baseUrl}/sites/${mistApiConfig.siteId}/devices?type=ap`;
         
-        const response = await fetch(apiUrl, {
+        const response = await fetchWithTimeout(apiUrl, {
           method: 'GET',
           headers: {
             'Authorization': `Token ${mistApiConfig.apiToken}`,
             'Content-Type': 'application/json'
           }
-        });
+        }, API_TIMEOUT);
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -118,7 +191,7 @@ MIST API Test
         
         const data = await response.json();
         
-        statusElement.textContent = 'Status: API aanroep succesvol';
+        statusElement.textContent = 'Status: Directe API aanroep succesvol';
         resultElement.textContent = JSON.stringify(data, null, 2);
         
         // Log aantal gevonden APs
@@ -129,28 +202,28 @@ MIST API Test
         console.log('AP Namen:', apNames);
         
       } catch (error) {
-        statusElement.textContent = 'Status: Fout bij API aanroep';
+        statusElement.textContent = 'Status: Fout bij directe API aanroep';
         resultElement.innerHTML = `<span class="error">Error: ${error.message}</span>`;
         console.error('API Error:', error);
       }
     });
     
-    // Test de API via een CORS proxy
-    testProxyButton.addEventListener('click', async () => {
-      statusElement.textContent = 'Status: API aanroepen via proxy...';
-      resultElement.textContent = 'Bezig met API aanroep via proxy...';
+    // Test met corsproxy.io
+    document.getElementById('testCorsProxyIoButton').addEventListener('click', async () => {
+      statusElement.textContent = 'Status: API aanroepen via corsproxy.io...';
+      resultElement.textContent = 'Bezig met API aanroep via corsproxy.io...';
       
       try {
         const apiUrl = `${mistApiConfig.baseUrl}/sites/${mistApiConfig.siteId}/devices?type=ap`;
-        const fullUrl = `${proxyUrl}${encodeURIComponent(apiUrl)}`;
+        const fullUrl = `${proxies.corsProxyIo}${encodeURIComponent(apiUrl)}`;
         
-        const response = await fetch(fullUrl, {
+        const response = await fetchWithTimeout(fullUrl, {
           method: 'GET',
           headers: {
             'Authorization': `Token ${mistApiConfig.apiToken}`,
             'Content-Type': 'application/json'
           }
-        });
+        }, API_TIMEOUT);
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -158,7 +231,7 @@ MIST API Test
         
         const data = await response.json();
         
-        statusElement.textContent = 'Status: API aanroep via proxy succesvol';
+        statusElement.textContent = 'Status: API aanroep via corsproxy.io succesvol';
         
         // Toon alleen de eerste 5 items om de output overzichtelijk te houden
         const shortData = data.slice(0, 5);
@@ -172,10 +245,153 @@ MIST API Test
         console.log('AP Namen:', apNames);
         
       } catch (error) {
-        statusElement.textContent = 'Status: Fout bij API aanroep via proxy';
+        statusElement.textContent = 'Status: Fout bij API aanroep via corsproxy.io';
         resultElement.innerHTML = `<span class="error">Error: ${error.message}</span>`;
         console.error('API Error:', error);
       }
+    });
+    
+    // Test met cors-anywhere
+    document.getElementById('testCorsAnywhereButton').addEventListener('click', async () => {
+      statusElement.textContent = 'Status: API aanroepen via cors-anywhere...';
+      resultElement.textContent = 'Bezig met API aanroep via cors-anywhere...';
+      
+      try {
+        const apiUrl = `${mistApiConfig.baseUrl}/sites/${mistApiConfig.siteId}/devices?type=ap`;
+        const fullUrl = `${proxies.corsAnywhere}${apiUrl}`;
+        
+        const response = await fetchWithTimeout(fullUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Token ${mistApiConfig.apiToken}`,
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        }, API_TIMEOUT);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        statusElement.textContent = 'Status: API aanroep via cors-anywhere succesvol';
+        
+        // Toon alleen de eerste 5 items om de output overzichtelijk te houden
+        const shortData = data.slice(0, 5);
+        resultElement.textContent = `Eerste 5 resultaten (van ${data.length} totaal):\n\n${JSON.stringify(shortData, null, 2)}`;
+        
+        // Log aantal gevonden APs
+        console.log(`Aantal gevonden APs: ${data.length}`);
+        
+        // Log de namen van de APs
+        const apNames = data.map(ap => ap.name);
+        console.log('AP Namen:', apNames);
+        
+      } catch (error) {
+        statusElement.textContent = 'Status: Fout bij API aanroep via cors-anywhere';
+        resultElement.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+        console.error('API Error:', error);
+      }
+    });
+    
+    // Test met allorigins.win
+    document.getElementById('testAllOriginsButton').addEventListener('click', async () => {
+      statusElement.textContent = 'Status: API aanroepen via allorigins.win...';
+      resultElement.textContent = 'Bezig met API aanroep via allorigins.win...';
+      
+      try {
+        const apiUrl = `${mistApiConfig.baseUrl}/sites/${mistApiConfig.siteId}/devices?type=ap`;
+        const fullUrl = `${proxies.allOrigins}${encodeURIComponent(apiUrl)}`;
+        
+        const response = await fetchWithTimeout(fullUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Token ${mistApiConfig.apiToken}`,
+            'Content-Type': 'application/json'
+          }
+        }, API_TIMEOUT);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        statusElement.textContent = 'Status: API aanroep via allorigins.win succesvol';
+        
+        // Toon alleen de eerste 5 items om de output overzichtelijk te houden
+        const shortData = data.slice(0, 5);
+        resultElement.textContent = `Eerste 5 resultaten (van ${data.length} totaal):\n\n${JSON.stringify(shortData, null, 2)}`;
+        
+        // Log aantal gevonden APs
+        console.log(`Aantal gevonden APs: ${data.length}`);
+        
+        // Log de namen van de APs
+        const apNames = data.map(ap => ap.name);
+        console.log('AP Namen:', apNames);
+        
+      } catch (error) {
+        statusElement.textContent = 'Status: Fout bij API aanroep via allorigins.win';
+        resultElement.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+        console.error('API Error:', error);
+      }
+    });
+    
+    // Simuleer API respons
+    document.getElementById('simulateButton').addEventListener('click', () => {
+      statusElement.textContent = 'Status: API respons simuleren...';
+      resultElement.textContent = 'Bezig met simulatie...';
+      
+      // Korte vertraging om simulatie realistischer te maken
+      setTimeout(() => {
+        // Gesimuleerde AP data
+        const simulatedData = [
+          {
+            id: "00000000-0000-0000-0000-000000000001",
+            name: "AP-00-001",
+            type: "ap",
+            model: "AP43",
+            serial: "FASM00000001",
+            mac: "5c5b35000001",
+            ip: "192.168.1.101",
+            status: "connected",
+            sku: "AP43-EU",
+            tags: ["NLSKB-AP-PP"]
+          },
+          {
+            id: "00000000-0000-0000-0000-000000000002",
+            name: "AP-A0-001",
+            type: "ap",
+            model: "AP43",
+            serial: "FASM00000002",
+            mac: "5c5b35000002",
+            ip: "192.168.1.102",
+            status: "connected",
+            sku: "AP43-EU",
+            tags: ["NLSKB-AP-GROUP"]
+          },
+          {
+            id: "00000000-0000-0000-0000-000000000003",
+            name: "AP-B0-005",
+            type: "ap",
+            model: "AP43",
+            serial: "FASM00000003",
+            mac: "5c5b35000003",
+            ip: "192.168.1.103",
+            status: "connected",
+            sku: "AP43-EU",
+            tags: ["NLSKB-AP-GROUP"]
+          }
+        ];
+        
+        statusElement.textContent = 'Status: API simulatie succesvol';
+        resultElement.textContent = JSON.stringify(simulatedData, null, 2);
+        
+        // Log gesimuleerde data
+        console.log('Gesimuleerde AP data:', simulatedData);
+        console.log('Gesimuleerde AP Namen:', simulatedData.map(ap => ap.name));
+      }, 500);
     });
   </script>
 </body>
