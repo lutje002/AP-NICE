@@ -31,6 +31,8 @@
     .button-container {
       display: flex;
       gap: 5px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
     
     h1 {
@@ -241,10 +243,6 @@
         padding: 5px 3px;
         font-size: 12px;
       }
-      
-      .button-container {
-        flex-direction: column;
-      }
     }
   </style>
 </head>
@@ -289,11 +287,17 @@
         <button class="filter-button" onclick="filterByBuilding('AP-D')">D-gebouw</button>
         <button class="filter-button" onclick="filterByBuilding('AP-E')">E-gebouw</button>
         <button class="filter-button" onclick="filterByBuilding('AP-F')">F-gebouw</button>
+        <button class="filter-button" onclick="filterByBuilding('AP-G')">G-gebouw</button>
+        <button class="filter-button" onclick="filterByBuilding('AP-H')">H-gebouw</button>
+        <button class="filter-button" onclick="filterByBuilding('AP-PRK')">Parkeerplaats</button>
+        <button class="filter-button" onclick="filterByBuilding('AP-RAD')">Radiologie</button>
         <button class="filter-button" onclick="filterByLocation('Winterswijk')">Winterswijk</button>
         <button class="filter-button" onclick="filterByLocation('Eibergen')">Eibergen</button>
         <button class="filter-button" onclick="filterByLocation('Ruurlo')">Ruurlo</button>
         <button class="filter-button" onclick="filterByLocation('Neede')">Neede</button>
         <button class="filter-button" onclick="filterByLocation('Aalten')">Aalten</button>
+        <button class="filter-button" onclick="filterByLocation('Groenlo')">Groenlo</button>
+        <button class="filter-button" onclick="filterByLocation('Lichtenvoorde')">Lichtenvoorde</button>
         <button class="filter-button" onclick="resetFilters()">Alles</button>
       </div>
       
@@ -469,7 +473,7 @@
       
       // Simuleer synchronisatie met MIST
       simulateMistSync()
-        .then(newAPs => {
+        .then(mistAPs => {
           // Update voortgangsbalk
           progressBar.style.width = '60%';
           syncStatus.textContent = '60% - Data ontvangen';
@@ -482,25 +486,76 @@
           
           // Nieuwe AP data array maken
           const newApData = [...apData]; // Begin met bestaande data
+          const processedLabels = new Set();
           
-          // Voor elke nieuwe AP uit MIST
-          for (let i = 0; i < newAPs.length; i++) {
-            const ap = newAPs[i];
-            const label = ap[2];
+          // Voor elke AP uit MIST
+          for (let i = 0; i < mistAPs.length; i++) {
+            const ap = mistAPs[i];
+            const label = ap.name; // Label-AP is de name uit MIST
             
             // Update progress
-            const progress = 60 + Math.floor((i / newAPs.length) * 40);
+            const progress = 60 + Math.floor((i / mistAPs.length) * 40);
             progressBar.style.width = `${progress}%`;
-            syncStatus.textContent = `${progress}% - AP ${i+1}/${newAPs.length}`;
+            syncStatus.textContent = `${progress}% - AP ${i+1}/${mistAPs.length}`;
             
-            // Als deze AP al bestaat, update de gegevens
+            // Bepaal de naam en locatie op basis van naamgevingsconventies
+            let displayName = label;
+            let location = "onbekend";
+            
+            // Bepaal bouwdeel en locatie op basis van de naam
+            if (label.startsWith('AP-A')) {
+              location = "Winterswijk";
+            } else if (label.startsWith('AP-B')) {
+              location = "Winterswijk";
+            } else if (label.startsWith('AP-C')) {
+              location = "Winterswijk";
+            } else if (label.startsWith('AP-D')) {
+              location = "Winterswijk";
+            } else if (label.startsWith('AP-E')) {
+              location = "Winterswijk";
+            } else if (label.startsWith('AP-F')) {
+              location = "Winterswijk";
+            } else if (label.startsWith('AP-G')) {
+              location = "Winterswijk";
+            } else if (label.startsWith('AP-H')) {
+              location = "Winterswijk";
+            } else if (label.startsWith('AP-PRK')) {
+              location = "Winterswijk";
+            } else if (label.startsWith('AP-RAD')) {
+              location = "Winterswijk";
+            } else if (label.includes('RUURLO')) {
+              location = "Ruurlo";
+            } else if (label.includes('EIBERGEN')) {
+              location = "Eibergen";
+            } else if (label.includes('NEEDE')) {
+              location = "Neede";
+            } else if (label.includes('AALTEN')) {
+              location = "Aalten";
+            } else if (label.includes('GROENLO')) {
+              location = "Groenlo";
+            } else if (label.includes('LICHTENVOORDE')) {
+              location = "Lichtenvoorde";
+            }
+            
+            // Als deze AP al bestaat, behoud de naam en locatie
             if (existingApMap[label] !== undefined) {
               const index = existingApMap[label];
-              newApData[index][3] = ap[3]; // Update TAG
+              // Behoud bestaande naam en locatie, update alleen TAG
+              newApData[index][3] = ap.tags ? ap.tags.join(', ') : "NLSKB-AP-PP";
               newApData[index][5] = ""; // Reset status
+              processedLabels.add(label);
             } else {
               // Anders voeg nieuwe AP toe
-              newApData.push(ap);
+              newApData.push([
+                displayName,
+                location,
+                label,
+                ap.tags ? ap.tags.join(', ') : "NLSKB-AP-PP",
+                "-",
+                "",
+                ""
+              ]);
+              processedLabels.add(label);
             }
           }
           
@@ -535,9 +590,9 @@
       return new Promise((resolve, reject) => {
         setTimeout(() => {
           try {
-            // Simuleer nieuwe APs van MIST
-            const newAPs = [
-           ["AP-RUURLO-1", "Ruurlo", "AP-00-001", "NLSKB-AP-PP", "-"],
+            // Simuleer APs van MIST
+            const mistAPs = [
+         ["AP-RUURLO-1", "Ruurlo", "AP-00-001", "NLSKB-AP-PP", "-"],
   ["RAP01", "onbekend", "AP-00-001", "NLSKB-AP-GROUP", "-"],
   ["AP-PRK-1", "Winterswijk", "AP-00-429", "NLSKB-AP-PP", "-"],
   ["AP-PRK-2", "Winterswijk", "AP-00-430", "NLSKB-AP-PP", "-"],
@@ -1000,7 +1055,7 @@
 ["RAP-Ruurlo-3", "Ruurlo", "AP-00-002", "", "-"]
     ];
             
-            resolve(newAPs);
+            resolve(mistAPs);
           } catch (error) {
             reject(error);
           }
@@ -1101,6 +1156,9 @@
   </script>
 </body>
 </html>
+
+
+          
 
         
         
