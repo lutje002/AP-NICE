@@ -416,16 +416,16 @@
       statusCell.innerHTML = "<span class='status-loading'>Verifiëren...</span>";
       
       // API aanroep om AP te verifiëren
-      checkAPInMist(apName, apLabel)
+      checkAPInMist(apLabel) // Nu zoeken we op Label-AP in plaats van Naam
         .then(result => {
           if (result.exists) {
-            if (result.labelMatches) {
+            if (result.nameMatches) {
               statusCell.innerHTML = "<span class='status-ok'>✓ Geverifieerd</span>";
               apData[index][5] = "<span class='status-ok'>✓ Geverifieerd</span>";
             } else {
-              statusCell.innerHTML = "<span class='status-error'>✗ Label komt niet overeen</span>";
-              apData[index][5] = "<span class='status-error'>✗ Label komt niet overeen</span>";
-              apData[index][6] = result.actualLabel || "";
+              statusCell.innerHTML = "<span class='status-error'>✗ Naam komt niet overeen</span>";
+              apData[index][5] = "<span class='status-error'>✗ Naam komt niet overeen</span>";
+              apData[index][6] = result.actualName || "";
             }
           } else {
             statusCell.innerHTML = "<span class='status-error'>✗ AP niet gevonden</span>";
@@ -448,15 +448,15 @@
       }
     }
     
-    // Functie om AP te controleren in MIST
-    async function checkAPInMist(apName, apLabel) {
+    // Functie om AP te controleren in MIST op basis van Label-AP
+    async function checkAPInMist(apLabel) {
       // Maak een proxy URL om CORS-problemen te omzeilen
       // Opmerking: In een productieomgeving zou je een eigen backend moeten gebruiken
       const proxyUrl = "https://cors-anywhere.herokuapp.com/";
-      const apiUrl = `${mistApiConfig.baseUrl}/sites/${mistApiConfig.siteId}/devices?name=${encodeURIComponent(apName)}`;
+      const apiUrl = `${mistApiConfig.baseUrl}/sites/${mistApiConfig.siteId}/devices`;
       
       try {
-        // API-aanroep naar MIST
+        // API-aanroep naar MIST om alle devices op te halen
         const response = await fetch(proxyUrl + apiUrl, {
           method: 'GET',
           headers: {
@@ -472,14 +472,17 @@
         
         const data = await response.json();
         
-        if (data && data.length > 0) {
-          const ap = data[0];
-          const actualLabel = ap.label || "";
-          
+        // Filter alleen op access points
+        const aps = data.filter(device => device.type === 'ap');
+        
+        // Zoek AP met het opgegeven label
+        const matchingAP = aps.find(ap => ap.name === apLabel);
+        
+        if (matchingAP) {
           return {
             exists: true,
-            labelMatches: actualLabel === apLabel,
-            actualLabel: actualLabel
+            nameMatches: true,
+            actualName: matchingAP.name
           };
         } else {
           return { exists: false };
@@ -491,15 +494,15 @@
         // Dit is alleen voor demonstratiedoeleinden - verwijder dit in productie
         console.warn("Falling back to simulation due to API error");
         
-        // Simulatie: 70% kans dat AP bestaat, 80% kans dat label overeenkomt als AP bestaat
+        // Simulatie: 70% kans dat AP bestaat, 80% kans dat naam overeenkomt als AP bestaat
         const exists = Math.random() < 0.7;
-        const labelMatches = exists && Math.random() < 0.8;
-        const actualLabel = labelMatches ? apLabel : `${apLabel}-MISMATCH`;
+        const nameMatches = exists && Math.random() < 0.8;
+        const actualName = nameMatches ? apLabel : `${apLabel}-MISMATCH`;
         
         return {
           exists: exists,
-          labelMatches: labelMatches,
-          actualLabel: actualLabel
+          nameMatches: nameMatches,
+          actualName: actualName
         };
       }
     }
@@ -545,33 +548,98 @@
         progressBar.style.width = '60%';
         syncStatus.textContent = '60% - APs gefilterd';
         
+        // Maak een map van bestaande AP's op basis van Label-AP (kolom 2)
+        const existingApMap = {};
+        for (let i = 0; i < apData.length; i++) {
+          existingApMap[apData[i][2]] = apData[i];
+        }
+        
         // Nieuwe AP data array maken
         const newApData = [];
+        const processedLabels = new Set();
         
         // Voor elk AP in MIST
         for (let i = 0; i < aps.length; i++) {
           const ap = aps[i];
-          const name = ap.name || ap.hostname || '';
-          const label = ap.label || '';
+          const name = ap.name || '';
+          
+          // Gebruik name als Label-AP
+          const label = name;
           const tags = ap.tags ? ap.tags.join(', ') : '';
           
-          // Zoek of dit AP al in onze lokale data staat
-          const existingIndex = apData.findIndex(row => row[0] === name);
+          // Bepaal de naam op basis van naamgevingsconventies
+          let displayName = name;
+          let location = "onbekend";
           
-          if (existingIndex >= 0) {
-            // AP bestaat al, update de gegevens maar behoud de locatie
-            const location = apData[existingIndex][1];
-            const notes = apData[existingIndex][4];
-            newApData.push([name, location, label, tags, notes, "", ""]);
-          } else {
-            // Nieuw AP, voeg toe met onbekende locatie
-            newApData.push([name, "onbekend", label, tags, "-", "", ""]);
+          // Bepaal bouwdeel en locatie op basis van de naam
+          if (name.startsWith('AP-A')) {
+            displayName = name;
+            location = "Winterswijk";
+          } else if (name.startsWith('AP-B')) {
+            displayName = name;
+            location = "Winterswijk";
+          } else if (name.startsWith('AP-C')) {
+            displayName = name;
+            location = "Winterswijk";
+          } else if (name.startsWith('AP-D')) {
+            displayName = name;
+            location = "Winterswijk";
+          } else if (name.startsWith('AP-E')) {
+            displayName = name;
+            location = "Winterswijk";
+          } else if (name.startsWith('AP-F')) {
+            displayName = name;
+            location = "Winterswijk";
+          } else if (name.includes('RUURLO')) {
+            location = "Ruurlo";
+          } else if (name.includes('EIBERGEN')) {
+            location = "Eibergen";
+          } else if (name.includes('NEEDE')) {
+            location = "Neede";
+          } else if (name.includes('AALTEN')) {
+            location = "Aalten";
           }
+          
+          // Zoek of dit AP al in onze lokale data staat op basis van Label-AP
+          if (existingApMap[label]) {
+            // AP bestaat al, behoud de locatie en opmerkingen
+            const existingAp = existingApMap[label];
+            newApData.push([
+              existingAp[0],           // Behoud de bestaande naam
+              existingAp[1],           // Behoud de bestaande locatie
+              label,                   // Update Label-AP
+              tags || existingAp[3],   // Update TAG of behoud bestaande
+              existingAp[4],           // Behoud opmerkingen
+              "",                      // Reset status
+              ""                       // Reset extra info
+            ]);
+          } else {
+            // Nieuw AP, voeg toe met afgeleide locatie
+            newApData.push([
+              displayName,             // Naam gebaseerd op naamgevingsconventie
+              location,                // Locatie gebaseerd op naam
+              label,                   // Label-AP is de name uit MIST
+              tags,                    // TAG uit MIST
+              "-",                     // Lege opmerking
+              "",                      // Lege status
+              ""                       // Lege extra info
+            ]);
+          }
+          
+          processedLabels.add(label);
           
           // Update progress
           const progress = 60 + Math.floor((i / aps.length) * 40);
           progressBar.style.width = `${progress}%`;
           syncStatus.textContent = `${progress}% - AP ${i+1}/${aps.length}`;
+        }
+        
+        // Voeg AP's toe die niet in MIST staan maar wel in onze lokale data
+        for (let i = 0; i < apData.length; i++) {
+          const label = apData[i][2];
+          if (!processedLabels.has(label)) {
+            newApData.push([...apData[i]]);
+          }
         }
         
         // Update de apData array
@@ -598,9 +666,9 @@
         // Simulatie voor testdoeleinden - verwijder dit in productie
         console.warn("Falling back to simulation due to API error");
         
-        // Simuleer wat nieuwe APs
+        // Simuleer wat nieuwe APs met de juiste naamgevingsconventie
         const simulatedAps = [
-        ["AP-RUURLO-1", "Ruurlo", "AP-00-001", "NLSKB-AP-PP", "-"],
+           ["AP-RUURLO-1", "Ruurlo", "AP-00-001", "NLSKB-AP-PP", "-"],
   ["RAP01", "onbekend", "AP-00-001", "NLSKB-AP-GROUP", "-"],
   ["AP-PRK-1", "Winterswijk", "AP-00-429", "NLSKB-AP-PP", "-"],
   ["AP-PRK-2", "Winterswijk", "AP-00-430", "NLSKB-AP-PP", "-"],
@@ -1063,10 +1131,52 @@
 ["RAP-Ruurlo-3", "Ruurlo", "AP-00-002", "", "-"]
     ];
         
-        // Combineer bestaande en gesimuleerde APs
-        const existingNames = apData.map(ap => ap[0]);
-        const newAps = simulatedAps.filter(ap => !existingNames.includes(ap[0]));
-        apData = [...apData, ...newAps];
+        // Maak een map van bestaande AP's op basis van Label-AP (kolom 2)
+        const existingApMap = {};
+        for (let i = 0; i < apData.length; i++) {
+          existingApMap[apData[i][2]] = apData[i];
+        }
+        
+        // Nieuwe AP data array maken
+        const newApData = [];
+        const processedLabels = new Set();
+        
+        // Voor elke gesimuleerde AP
+        for (let i = 0; i < simulatedAps.length; i++) {
+          const ap = simulatedAps[i];
+          const label = ap[2];
+          
+          // Zoek of dit AP al in onze lokale data staat op basis van Label-AP
+          if (existingApMap[label]) {
+            // AP bestaat al, behoud de locatie en opmerkingen
+            const existingAp = existingApMap[label];
+            newApData.push([
+              existingAp[0],           // Behoud de bestaande naam
+              existingAp[1],           // Behoud de bestaande locatie
+              label,                   // Update Label-AP
+              ap[3] || existingAp[3],  // Update TAG of behoud bestaande
+              existingAp[4],           // Behoud opmerkingen
+              "",                      // Reset status
+              ""                       // Reset extra info
+            ]);
+          } else {
+            // Nieuw AP, voeg toe
+            newApData.push(ap);
+          }
+          
+          processedLabels.add(label);
+        }
+        
+        // Voeg AP's toe die niet in gesimuleerde data staan maar wel in onze lokale data
+        for (let i = 0; i < apData.length; i++) {
+          const label = apData[i][2];
+          if (!processedLabels.has(label)) {
+            newApData.push([...apData[i]]);
+          }
+        }
+        
+        // Update de apData array
+        apData = newApData;
         
         // Vernieuw de tabel
         fillTable(apData);
@@ -1175,3 +1285,5 @@
   </script>
 </body>
 </html>
+        
+    
